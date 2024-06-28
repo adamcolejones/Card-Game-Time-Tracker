@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Go Cards!</title>
+    <link rel="stylesheet" href="main.css">
+</head>
+<body>
+    <!-- <h1>Go Cards!</h1> -->
+    <div id="imageContainer">
+        <img src="assets/title.png" alt="GO CARDS">
+    </div>
+    <div id="videoContainer">
+        <video id="animatedCardsVideo" autoplay loop muted playsinline>
+            <source src="assets/AnimatedCards1m.webm" type="video/webm">
+            Your browser does not support the video tag.
+        </video>
+    </div>
+    <div id="mainMenu">
+        <button onclick="newGame()">New Game</button>
+        <button onclick="showGames()">Previous Games</button>
+        <button onclick="studio()">Studio</button>
+
+    </div>
+    <div id="gameButtons"></div>
+    <button id="backButton" onclick="hideGames()">Back</button> <!-- Back button -->
+    <div id="inGame" style="display: none;">
+        <!-- ############################################################################################################## -->
+        <div id="gameInfo">
+            <input type="text" id="gameName" placeholder="Enter game name">
+        </div>
+        <!-- ############################################################################################################## -->
+        <div id="playerForm">
+            <input type="text" id="playerName" placeholder="Enter player name">
+            <button onclick="addPlayer()">Add Player</button>
+            <button onclick="quitGame()">Save & Quit</button>
+        </div>
+        <!-- ############################################################################################################## -->
+        <div id="playersContainer">
+            <button id="prevPlayerButton" onclick="prevPlayer()">
+                <img src="assets/previous.png" alt="Previous">
+                <span id="prevPlayerName">Previous Player</span>
+            </button>
+            <div id="players"></div>
+            <button id="nextPlayerButton" onclick="nextPlayer()">
+                <img src="assets/next.png" alt="Next">
+                <span id="nextPlayerName">Next Player</span>
+            </button>
+        </div>
+        <!-- ############################################################################################################## -->
+        <div id="controlButtons">
+            <button id="toggleTimerButton" onclick="toggleTimer()">Pause Timer</button>
+            <button id="refModeButton" onclick="refMode()">Ref Mode</button>
+        </div>
+        <audio id="chime" src="chime.mp3" preload="auto"></audio>
+    </div>
+    <div id="gameContent"></div>
+
+    <script>
+        let players = [];
+        let currentPlayerIndex = -1;
+        let currentStartTime = null;
+        let timer = null;
+        let isPaused = false;
+        let pauseStartTime = null;
+        let totalPauseTime = 0;
+        let index = 1;
+        let dataGames = [];
+        let currentGameId = null;
+        let refModeEnabled = false; // Variable to toggle ref mode
+        let timerRunning = false; // Variable to track if the timer is running
+
+        fetch('data.json')
+            .then(response => response.json())
+            .then(data => {
+                dataGames = data.Games || [];
+                console.log(dataGames);
+            })
+            .catch(error => console.error('Error fetching media data:', error));
+
+        //###################################################################################################################################################################
+        document.addEventListener("DOMContentLoaded", function() {
+            var video = document.getElementById('animatedCardsVideo');
+            video.playbackRate = 0.75; // Slows down the video speed by 50%
+        });
+
+        //###################################################################################################################################################################
+        function showGames() {
+            const gameButtonsDiv = document.getElementById('gameButtons');
+            gameButtonsDiv.innerHTML = ''; // Clear previous buttons
+            dataGames.forEach(game => {
+                const buttonContainer = document.createElement('div');
+                buttonContainer.className = 'gameButtonContainer';
+
+                const button = document.createElement('button');
+                button.className = 'gameButton';
+                button.innerText = game.name;
+                button.style.flex = '1'; // Make the game button take most of the width
+                button.onclick = () => displayGameContent(game);
+                buttonContainer.appendChild(button);
+
+                const deleteButton = document.createElement('button');
+                deleteButton.innerText = 'X';
+                deleteButton.className = 'deleteButton';
+                deleteButton.onclick = () => deleteGame(game.id);
+                buttonContainer.appendChild(deleteButton);
+
+                gameButtonsDiv.appendChild(buttonContainer);
+            });
+            document.getElementById('mainMenu').style.display = 'none'; // Hide the main menu
+            document.getElementById('backButton').style.display = 'block'; // Show the back button
+        }
+
+        //###################################################################################################################################################################
+        function hideGames() {
+            document.getElementById('gameButtons').innerHTML = ''; // Clear the game buttons
+            document.getElementById('mainMenu').style.display = 'flex'; // Show the main menu
+            document.getElementById('backButton').style.display = 'none'; // Hide the back button
+        }
+
+        //###################################################################################################################################################################
+        function deleteGame(gameId) {
+            const confirmDelete = confirm('Are you sure you want to delete this game?');
+            if (!confirmDelete) return;
+            dataGames = dataGames.filter(game => game.id !== gameId); // Remove the game from dataGames
+            window.dataBridge.saveData({ Games: dataGames, Records: [] }); // Save the updated dataGames to the JSON file
+            showGames(); // Refresh the game buttons
+        }
+
+        //###################################################################################################################################################################
+        // Initiates the game with values from the JSON
+        function displayGameContent(game) {
+            document.getElementById('backButton').style.display = 'none'; // Hide the back button
+            document.getElementById('gameButtons').innerHTML = ''; // Remove the previous game list
+            document.getElementById('mainMenu').style.display = 'none'; // Hide the main menu
+            document.getElementById('inGame').style.display = 'block'; // Show the game interface
+
+            currentGameId = game.id; // Set the current game ID
+            document.getElementById('gameName').value = game.name; // Set the game name in the input field
+            
+            players = game.players.map(player => ({
+                name: player.name,
+                index: player.index,
+                totalTime: parseTime(player.totalTime),
+                notes: player.notes
+            }));
+            index = players.length + 1;
+            currentPlayerIndex = game.current || 0; // Set current player index
+
+            renderPlayers();
+        }
+
+        //###################################################################################################################################################################
+        function parseTime(timeStr) {
+            const parts = timeStr.split(':');
+            return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+        }
+
+        //###################################################################################################################################################################
+        function newGame() {
+            document.getElementById('gameButtons').innerHTML = ''; // Remove the previous game list
+            document.getElementById('mainMenu').style.display = 'none'; // Hide the main menu
+            document.getElementById('inGame').style.display = 'block'; // Show the game interface
+            document.getElementById('gameName').value = ''; // Clear the game name input field
+            currentGameId = null; // Reset current game ID
+            players = []; // Reset players array
+            currentPlayerIndex = -1; // Reset current player index
+            index = 1; // Reset player index
+            renderPlayers(); // Clear the players display
+        }
+
+        //###################################################################################################################################################################
+        document.getElementById('playerName').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') {
+                addPlayer();
+            }
+        });
+
+        //###################################################################################################################################################################
+        function addPlayer() {
+            const name = document.getElementById('playerName').value;
+            if (name) {
+                players.push({ index, name, totalTime: 0, notes: '' });
+                index++; // Increase the index per player added
+                renderPlayers();
+                document.getElementById('playerName').value = '';
+            }
+            saveGame();
+        }
+
+        //###################################################################################################################################################################
+        function renderPlayers() {
+            const playersDiv = document.getElementById('players');
+            playersDiv.innerHTML = '';
+
+            if (refModeEnabled) {
+                players.forEach((player, idx) => {
+                    const playerDiv = document.createElement('div');
+                    playerDiv.className = 'player' + (idx === currentPlayerIndex ? ' current' : '') + (timerRunning ? ' running' : '');
+                    playerDiv.innerHTML = `
+                        <strong>${player.name}</strong>
+                        <span class="time">Total Time: <span id="totalTime${idx}">${formatTime(player.totalTime)}</span></span>
+                        <textarea placeholder="Notes" onchange="updateNotes(${idx}, this.value)">${player.notes}</textarea>
+                    `;
+                    playersDiv.appendChild(playerDiv);
+                });
+            } else {
+                if (currentPlayerIndex !== -1) {
+                    const player = players[currentPlayerIndex];
+                    const playerDiv = document.createElement('div');
+                    playerDiv.className = 'player current' + (timerRunning ? ' running' : '');
+                    playerDiv.innerHTML = `
+                        <strong>${player.name}</strong>
+                        <span class="time">Total Time: <span id="totalTime${currentPlayerIndex}">${formatTime(player.totalTime)}</span></span>
+                        <textarea placeholder="Notes" onchange="updateNotes(${currentPlayerIndex}, this.value)">${player.notes}</textarea>
+                    `;
+                    playersDiv.appendChild(playerDiv);
+                }
+            }
+
+            const hasPlayers = players.length > 0;
+            document.getElementById('playersContainer').style.display = hasPlayers ? '' : 'none';
+            document.getElementById('controlButtons').style.display = hasPlayers ? '' : 'none';
+            document.getElementById('toggleTimerButton').innerText = timerRunning ? 'Pause Timer' : 'Start Timer'; // Update button text
+            document.getElementById('toggleTimerButton').style.background = timerRunning ? 'linear-gradient(to right, #ff7e5f, pink)' : 'linear-gradient(to right, lightgreen, lightblue)'; // Change background color
+            document.getElementById('refModeButton').innerText = refModeEnabled ? 'Normal Mode' : 'Ref Mode'; // Update ref mode button text
+
+            // Update next and previous player buttons
+            if (hasPlayers) {
+                const nextPlayerIndex = (currentPlayerIndex + 1) % players.length;
+                const prevPlayerIndex = (currentPlayerIndex - 1 + players.length) % players.length;
+                document.getElementById('nextPlayerButton').innerHTML = `<img src="assets/next.png" alt="Next"> ${players[nextPlayerIndex].name}`;
+                document.getElementById('prevPlayerButton').innerHTML = `<img src="assets/previous.png" alt="Previous"> ${players[prevPlayerIndex].name}`;
+            } else {
+                document.getElementById('nextPlayerButton').innerHTML = `<img src="assets/next.png" alt="Next">`;
+                document.getElementById('prevPlayerButton').innerHTML = `<img src="assets/previous.png" alt="Previous">`;
+            }
+        }
+
+        //###################################################################################################################################################################   
+        function toggleTimer() {
+            if (timerRunning) {
+                clearInterval(timer);
+                timer = null;
+                isPaused = true;
+                pauseStartTime = new Date();
+
+                // Update total time with elapsed time
+                updateElapsedTimeForCurrentPlayer();
+
+                document.getElementById('toggleTimerButton').innerText = 'Start Timer'; // Update button text
+                timerRunning = false;
+            } else {
+                if (isPaused) {
+                    const pauseEndTime = new Date();
+                    totalPauseTime += pauseEndTime - pauseStartTime;
+                    isPaused = false;
+                }
+                startTimerForCurrentPlayer();
+                document.getElementById('toggleTimerButton').innerText = 'Pause Timer'; // Update button text
+                timerRunning = true;
+            }
+            renderPlayers();
+            saveGame(); // Save the game state
+        }
+
+        //###################################################################################################################################################################
+        function refMode() {
+            refModeEnabled = !refModeEnabled; // Toggle ref mode
+            renderPlayers(); // Re-render players
+        }
+
+        document.getElementById('refModeButton').onclick = refMode;
+
+        //###################################################################################################################################################################
+        function formatTime(seconds) {
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = seconds % 60;
+            return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+        }
+
+        //###################################################################################################################################################################
+        function startTimerForCurrentPlayer() {
+            if (timer) {
+                clearInterval(timer);
+            }
+            currentStartTime = new Date();
+            timer = setInterval(updateTimer, 1000);
+        }
+
+        //###################################################################################################################################################################
+        function nextPlayer() {
+            if (players.length === 0) return;
+
+            updateElapsedTimeForCurrentPlayer();
+
+            let nextIndex = (currentPlayerIndex + 1) % players.length;
+            currentPlayerIndex = nextIndex;
+
+            renderPlayers(); // Render the new player's content
+            saveGame(); // Save the game state
+
+            // Start the timer for the new player if the previous timer was running
+            if (timerRunning) {
+                startTimerForCurrentPlayer();
+            }
+        }
+
+        //###################################################################################################################################################################
+        function prevPlayer() {
+            if (players.length === 0) return;
+
+            updateElapsedTimeForCurrentPlayer();
+
+            let prevIndex = (currentPlayerIndex - 1 + players.length) % players.length;
+            currentPlayerIndex = prevIndex;
+
+            renderPlayers(); // Render the new player's content
+            saveGame(); // Save the game state
+
+            // Start the timer for the new player if the previous timer was running
+            if (timerRunning) {
+                startTimerForCurrentPlayer();
+            }
+        }
+
+        //###################################################################################################################################################################
+        function updateElapsedTimeForCurrentPlayer() {
+            if (currentPlayerIndex !== -1 && currentStartTime) {
+                const endTime = new Date();
+                const elapsedTime = Math.round((endTime - currentStartTime) / 1000);
+                players[currentPlayerIndex].totalTime += elapsedTime;
+                document.getElementById(`totalTime${currentPlayerIndex}`).innerText = formatTime(players[currentPlayerIndex].totalTime);
+                currentStartTime = null;
+            }
+        }
+
+        //###################################################################################################################################################################
+        function refMode() {
+            refModeEnabled = !refModeEnabled; // Toggle ref mode
+            renderPlayers(); // Re-render players
+        }
+
+        //###################################################################################################################################################################
+        function updateNotes(index, notes) {
+            saveGame();
+            players[index].notes = notes;
+        }
+
+        //###################################################################################################################################################################
+        function updateTimer() {
+            if (currentPlayerIndex !== -1 && currentStartTime) {
+                const elapsedTime = Math.round((new Date() - currentStartTime) / 1000);
+                document.getElementById(`totalTime${currentPlayerIndex}`).innerText = formatTime(players[currentPlayerIndex].totalTime + elapsedTime);
+            }
+        }
+
+        document.getElementById('toggleTimerButton').onclick = toggleTimer;
+
+        //###################################################################################################################################################################
+        async function saveGame() {
+            let gameName = document.getElementById('gameName').value;
+
+            if (players.length === 0 && !gameName) {
+                // alert('No players added. The game will not be saved.');
+                // Hide game interface and show main menu
+                document.getElementById('inGame').style.display = 'none';
+                document.getElementById('mainMenu').style.display = 'block';
+                return;
+            }
+
+            if (!gameName) {
+                gameName = 'New Game';
+            }
+
+            const gameState = {
+                id: currentGameId || generateNewGameId(),
+                name: gameName,
+                date: new Date().toISOString(),
+                notes: "Game Notes", // Add logic to get game notes
+                current: currentPlayerIndex,
+                players: players.map(player => ({
+                    name: player.name,
+                    index: player.index,
+                    totalTime: formatTime(player.totalTime),
+                    notes: player.notes
+                }))
+            };
+
+            // Check if game already exists
+            const gameIndex = dataGames.findIndex(game => game.id === gameState.id);
+            if (gameIndex !== -1) {
+                dataGames[gameIndex] = gameState; // Update existing game
+            } else {
+                dataGames.push(gameState); // Add new game
+            }
+
+            window.dataBridge.saveData(gameState);
+
+            // Hide game interface and show main menu
+            // document.getElementById('inGame').style.display = 'none';
+            // document.getElementById('mainMenu').style.display = 'block';
+        }
+
+        //###################################################################################################################################################################
+        function generateNewGameId() {
+            const highestId = dataGames.reduce((maxId, game) => Math.max(maxId, parseInt(game.id)), 0);
+            return (highestId + 1).toString();
+        }
+
+        //###################################################################################################################################################################
+        function quitGame() {
+            saveGame();
+            document.getElementById('inGame').style.display = 'none';
+            document.getElementById('mainMenu').style.display = 'block';
+        }
+
+        //###################################################################################################################################################################
+    </script>
+    <script type="module" src="main.js"></script>
+</body>
+</html>
